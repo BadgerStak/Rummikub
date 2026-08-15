@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Rummikub Scores</title>
+<meta name="description" content="Offline-friendly Rummikub score tracker for game night with friends.">
+<meta name="theme-color" content="#0c3d2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rummikub">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app"></div>
+
+<template id="tpl-setup">
+  <main class="screen setup-screen">
+    <h1 class="app-title">🁶 Rummikub Scores</h1>
+    <p class="subtitle">Add everyone at the table, then start the game.</p>
+    <form id="player-form" class="player-form" autocomplete="off">
+      <div id="player-list" class="player-list"></div>
+      <button type="button" id="add-player-btn" class="btn btn-secondary">+ Add Player</button>
+    </form>
+    <button type="button" id="start-game-btn" class="btn btn-primary btn-large">Start Game</button>
+    <button type="button" id="resume-game-btn" class="btn btn-ghost" hidden>Resume Current Game</button>
+  </main>
+</template>
+
+<template id="tpl-game">
+  <main class="screen game-screen">
+    <header class="game-header">
+      <button type="button" id="menu-btn" class="icon-btn" aria-label="Menu">☰</button>
+      <h1 class="app-title small">Rummikub Scores</h1>
+      <button type="button" id="end-game-btn" class="icon-btn" aria-label="End game">🏁</button>
+    </header>
+
+    <section class="standings" id="standings"></section>
+
+    <section class="round-entry" id="round-entry"></section>
+
+    <section class="history-wrap">
+      <h2 class="section-label">Round History</h2>
+      <div class="history-scroll">
+        <table class="history-table" id="history-table"></table>
+      </div>
+    </section>
+  </main>
+</template>
+
+<div class="modal-backdrop" id="modal-backdrop" hidden>
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
