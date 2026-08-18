@@ -309,7 +309,7 @@
 
   function freshDraftRound() {
     var tiles = {};
-    state.players.forEach(function (p) { tiles[p.id] = 0; });
+    state.players.forEach(function (p) { tiles[p.id] = null; });
     return { winnerId: null, stalemate: false, tiles: tiles };
   }
 
@@ -365,7 +365,7 @@
         '<div class="round-player-row" data-pid="' + p.id + '">' +
           '<div class="round-player-name"><span class="player-swatch" style="background:' + p.color + '"></span><span class="nm">' + esc(p.name) + '</span></div>' +
           '<button type="button" class="winner-toggle' + (isWinner ? ' active' : '') + '" data-role="toggle-winner" data-pid="' + p.id + '">' + (isWinner ? '🏆 Went Out' : 'Went Out') + '</button>' +
-          '<input type="number" inputmode="numeric" class="tiles-input" data-role="tiles-input" data-pid="' + p.id + '" value="' + (draftRound.tiles[p.id] || 0) + '" min="0" ' + (inputDisabled ? 'disabled' : '') + '>' +
+          '<input type="number" inputmode="numeric" class="tiles-input" data-role="tiles-input" data-pid="' + p.id + '" value="' + (draftRound.tiles[p.id] == null ? '' : draftRound.tiles[p.id]) + '" placeholder="0" min="0" ' + (inputDisabled ? 'disabled' : '') + '>' +
         '</div>'
       );
     }).join('');
@@ -390,8 +390,9 @@
     el.querySelectorAll('[data-role="tiles-input"]').forEach(function (input) {
       input.addEventListener('input', function () {
         var pid = input.getAttribute('data-pid');
+        if (input.value === '') { draftRound.tiles[pid] = null; return; }
         var v = parseInt(input.value, 10);
-        draftRound.tiles[pid] = isNaN(v) ? 0 : Math.max(0, v);
+        draftRound.tiles[pid] = isNaN(v) ? null : Math.max(0, v);
       });
     });
 
@@ -513,7 +514,7 @@
       if (!name) return;
       var p = { id: uid(), name: name.trim() || ('Player ' + (state.players.length + 1)), color: colorFor(state.players.length) };
       state.players.push(p);
-      draftRound.tiles[p.id] = 0;
+      draftRound.tiles[p.id] = null;
       persist();
       closeModal();
       renderGame();
