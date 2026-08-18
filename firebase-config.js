@@ -7,10 +7,10 @@
 // Leaving the placeholder apiKey below keeps the app fully working in
 // local-only mode (no shared links, no signup needed).
 window.FIREBASE_CONFIG = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT.firebaseapp.com',
-  projectId: 'YOUR_PROJECT',
-  storageBucket: 'YOUR_PROJECT.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId: 'YOUR_APP_ID'
+  apiKey: 'AIzaSyCkzxKH5_LbNE1M7qPhs4UKhhEBq-QIsaM',
+  authDomain: 'rummikub-520a7.firebaseapp.com',
+  projectId: 'rummikub-520a7',
+  storageBucket: 'rummikub-520a7.firebasestorage.app',
+  messagingSenderId: '957955808459',
+  appId: '1:957955808459:web:520c4d65e0d36bb1ff4f4e'
 };
