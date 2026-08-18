@@ -563,15 +563,15 @@
     var round = state.rounds[idx];
     if (!round) return;
     var rows = state.players.map(function (p) {
+      if (!round.tiles.hasOwnProperty(p.id)) return ''; // player joined after this round was recorded
       var tileVal = round.tiles[p.id];
-      if (typeof tileVal !== 'number') return '';
       var isWinner = round.winnerId === p.id;
       return (
         '<div class="modal-row">' +
           '<span class="player-swatch" style="background:' + p.color + '"></span>' +
           '<label>' + esc(p.name) + (isWinner ? ' 👑' : '') + '</label>' +
           '<button type="button" class="winner-toggle' + (isWinner ? ' active' : '') + '" data-role="e-winner" data-pid="' + p.id + '">Went Out</button>' +
-          '<input type="number" min="0" data-pid="' + p.id + '" value="' + tileVal + '" ' + (isWinner ? 'disabled' : '') + '>' +
+          '<input type="number" min="0" data-pid="' + p.id + '" value="' + (tileVal == null ? '' : tileVal) + '" placeholder="0" ' + (isWinner ? 'disabled' : '') + '>' +
         '</div>'
       );
     }).join('');
