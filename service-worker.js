@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rummikub-tracker-v2';
+const CACHE_NAME = 'rummikub-tracker-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -35,18 +35,24 @@ self.addEventListener('activate', function (event) {
 
 self.addEventListener('fetch', function (event) {
   if (event.request.method !== 'GET') return;
+  var requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin) return; // let Firebase/CDN requests pass through untouched
+
+  // Network-first: always prefer the latest deployed code when online, so a
+  // shipped fix isn't silently masked by a stale cache. Cache is only a
+  // fallback for offline use.
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      if (cached) return cached;
-      return fetch(event.request)
-        .then(function (response) {
-          var copy = response.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
-          return response;
-        })
-        .catch(function () {
+    fetch(event.request)
+      .then(function (response) {
+        var copy = response.clone();
+        caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
+        return response;
+      })
+      .catch(function () {
+        return caches.match(event.request).then(function (cached) {
+          if (cached) return cached;
           if (event.request.mode === 'navigate') return caches.match('./index.html');
         });
-    })
+      })
   );
 });
