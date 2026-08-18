@@ -116,9 +116,27 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 12px;
   padding-top: var(--safe-top);
 }
+.header-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.sync-badge {
+  font-size: 0.7rem;
+  color: #cfe3da;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.sync-badge.error { color: #ff9d9d; }
 
 /* Standings */
 .standings {

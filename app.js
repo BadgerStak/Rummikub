@@ -2,16 +2,26 @@
   'use strict';
 
   var STORAGE_KEY = 'rummikubTrackerState_v1';
+  var LAST_GAME_KEY = 'rummikubLastGameId_v1';
   var TILE_COLORS = ['#c42a2a', '#1e56a8', '#1e1e1e', '#d67a1e', '#6a3fa0', '#1e8a5a'];
 
   var app = document.getElementById('app');
   var modalBackdrop = document.getElementById('modal-backdrop');
   var modalContent = document.getElementById('modal-content');
 
+  var firebaseReady = false;
+  var db = null;
+  var currentUnsub = null;
+  var syncStatus = 'connecting'; // 'connecting' | 'synced' | 'error'
+
   /* ---------- state ---------- */
 
   function uid() {
     return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  }
+
+  function genGameId() {
+    return Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
   }
 
   function loadState() {
@@ -26,11 +36,25 @@
     }
   }
 
-  function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  /** Writes the current in-memory state to whichever store owns it: Firestore for
+   * a shared game, localStorage for a local-only one. */
+  function persist() {
+    if (state.gameId && firebaseReady && db) {
+      db.collection('games').doc(state.gameId).set({
+        players: state.players,
+        rounds: state.rounds,
+        started: true,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(function (err) {
+        console.warn('Rummikub: sync write failed (will retry when back online)', err);
+      });
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
   }
 
   var state = loadState() || {
+    gameId: null,
     players: [],
     rounds: [],
     started: false
@@ -69,6 +93,131 @@
     return TILE_COLORS[index % TILE_COLORS.length];
   }
 
+  /* ---------- URL helpers ---------- */
+
+  function getUrlGameId() {
+    var params = new URLSearchParams(window.location.search);
+    return params.get('g');
+  }
+
+  function setUrlGameId(id) {
+    var url = new URL(window.location.href);
+    if (id) url.searchParams.set('g', id); else url.searchParams.delete('g');
+    window.history.replaceState({}, '', url.toString());
+  }
+
+  /* ---------- Firebase / sync ---------- */
+
+  function initFirebase() {
+    try {
+      var cfg = window.FIREBASE_CONFIG;
+      if (!cfg || !cfg.apiKey || cfg.apiKey.indexOf('YOUR_') === 0 || typeof firebase === 'undefined') return;
+      if (!firebase.apps.length) firebase.initializeApp(cfg);
+      db = firebase.firestore();
+      try { db.enablePersistence({ synchronizeTabs: true }).catch(function () {}); } catch (e) { /* unsupported browser/tab */ }
+      firebaseReady = true;
+    } catch (e) {
+      console.warn('Rummikub: Firebase init failed, continuing in local-only mode', e);
+      firebaseReady = false;
+    }
+  }
+
+  function setSyncStatus(s) {
+    syncStatus = s;
+    renderSyncBadge();
+  }
+
+  function applyRemoteState(gameId, data) {
+    var roundsChanged = !state.started || state.gameId !== gameId || state.rounds.length !== (data.rounds || []).length;
+    state = { gameId: gameId, players: data.players || [], rounds: data.rounds || [], started: true };
+    localStorage.setItem(LAST_GAME_KEY, gameId);
+    if (roundsChanged || !draftRound) draftRound = freshDraftRound();
+    render();
+  }
+
+  function attachRemoteListener(gameId, isNewGame) {
+    if (currentUnsub) { currentUnsub(); currentUnsub = null; }
+    currentUnsub = db.collection('games').doc(gameId).onSnapshot(function (snap) {
+      if (!snap.exists) {
+        if (!isNewGame) renderJoinError('This game link is invalid, or the game was deleted.');
+        return;
+      }
+      setSyncStatus('synced');
+      applyRemoteState(gameId, snap.data());
+    }, function (err) {
+      console.warn('Rummikub: Firestore sync error', err);
+      setSyncStatus('error');
+      if (isNewGame) {
+        alert('Could not start a shared game (check your Firebase setup) — continuing locally on this device only.');
+        localStorage.removeItem(LAST_GAME_KEY);
+        setUrlGameId(null);
+        state = { gameId: null, players: state.players, rounds: state.rounds, started: true };
+        persist();
+        render();
+      } else {
+        renderJoinError('Could not load this shared game. Check your connection and try again.');
+      }
+    });
+  }
+
+  function beginGame(players) {
+    if (!firebaseReady) {
+      state = { gameId: null, players: players, rounds: [], started: true };
+      draftRound = freshDraftRound();
+      persist();
+      render();
+      return;
+    }
+    var gameId = genGameId();
+    state = { gameId: gameId, players: players, rounds: [], started: true };
+    draftRound = freshDraftRound();
+    localStorage.setItem(LAST_GAME_KEY, gameId);
+    setUrlGameId(gameId);
+    setSyncStatus('connecting');
+    render();
+    db.collection('games').doc(gameId).set({
+      players: players,
+      rounds: [],
+      started: true,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(function (err) {
+      console.warn('Rummikub: could not create shared game', err);
+    });
+    attachRemoteListener(gameId, true);
+  }
+
+  function joinRemoteGame(gameId) {
+    renderLoadingScreen();
+    if (!firebaseReady) {
+      renderJoinError('This is a shared game link, but sharing isn’t configured on this site yet.');
+      return;
+    }
+    setSyncStatus('connecting');
+    attachRemoteListener(gameId, false);
+  }
+
+  function resetToSetup() {
+    if (currentUnsub) { currentUnsub(); currentUnsub = null; }
+    localStorage.removeItem(LAST_GAME_KEY);
+    setUrlGameId(null);
+    state = { gameId: null, players: [], rounds: [], started: false };
+    draftRound = null;
+    draftPlayers = [{ id: uid(), name: '' }, { id: uid(), name: '' }];
+    persist();
+    render();
+  }
+
+  function shareCurrentGame() {
+    var url = window.location.href;
+    if (navigator.share) {
+      navigator.share({ title: 'Rummikub Score Tracker', text: 'Join our game and help keep score!', url: url }).catch(function () {});
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(function () { alert('Link copied to clipboard!'); }).catch(function () { window.prompt('Copy this link:', url); });
+    } else {
+      window.prompt('Copy this link:', url);
+    }
+  }
+
   /* ---------- rendering: root ---------- */
 
   function render() {
@@ -77,6 +226,17 @@
     } else {
       renderGame();
     }
+  }
+
+  function renderLoadingScreen() {
+    app.innerHTML = '<main class="screen"><div class="empty-hint" style="margin-top:60px;">Loading game…</div></main>';
+  }
+
+  function renderJoinError(msg) {
+    app.innerHTML =
+      '<main class="screen"><div class="empty-hint" style="margin-top:60px;">' + esc(msg) + '</div>' +
+      '<button type="button" class="btn btn-primary" id="join-error-newgame" style="margin-top:16px;">Start a New Game</button></main>';
+    document.getElementById('join-error-newgame').addEventListener('click', resetToSetup);
   }
 
   /* ---------- setup screen ---------- */
@@ -128,11 +288,7 @@
         alert('Add at least 2 players.');
         return;
       }
-      state.players = named;
-      state.rounds = [];
-      state.started = true;
-      saveState();
-      render();
+      beginGame(named);
     });
 
     var resumeBtn = document.getElementById('resume-game-btn');
@@ -141,7 +297,7 @@
       resumeBtn.hidden = false;
       resumeBtn.addEventListener('click', function () {
         state.started = true;
-        saveState();
+        persist();
         render();
       });
     }
@@ -166,9 +322,20 @@
     document.getElementById('menu-btn').addEventListener('click', openMenuModal);
     document.getElementById('end-game-btn').addEventListener('click', openEndGameModal);
 
+    renderSyncBadge();
     renderStandings();
     renderRoundEntry();
     renderHistory();
+  }
+
+  function renderSyncBadge() {
+    var el = document.getElementById('sync-badge');
+    if (!el) return;
+    if (!state.gameId) { el.hidden = true; return; }
+    el.hidden = false;
+    if (syncStatus === 'synced') { el.textContent = '🟢 Shared game — tap ☰ to invite'; el.className = 'sync-badge synced'; }
+    else if (syncStatus === 'connecting') { el.textContent = '🟡 Connecting…'; el.className = 'sync-badge connecting'; }
+    else { el.textContent = '🔴 Sync issue — changes stay on this device'; el.className = 'sync-badge error'; }
   }
 
   function renderStandings() {
@@ -261,7 +428,7 @@
       scores: scores
     });
     draftRound = freshDraftRound();
-    saveState();
+    persist();
     renderStandings();
     renderRoundEntry();
     renderHistory();
@@ -328,21 +495,26 @@
   });
 
   function openMenuModal() {
+    var shareRow = state.gameId ? '<button type="button" class="btn btn-secondary" id="m-share">🔗 Share Game Link</button>' : '';
     openModal(
       '<h2>Menu</h2>' +
+      shareRow +
       '<button type="button" class="btn btn-secondary" id="m-add-player">+ Add Player (joins from next round)</button>' +
       '<button type="button" class="btn btn-secondary" id="m-rename">Rename a Player</button>' +
       '<button type="button" class="btn btn-danger" id="m-new-game" style="margin-top:16px;">Start New Game</button>' +
       '<button type="button" class="btn btn-ghost" id="m-close">Cancel</button>'
     );
     document.getElementById('m-close').addEventListener('click', closeModal);
+    if (state.gameId) {
+      document.getElementById('m-share').addEventListener('click', shareCurrentGame);
+    }
     document.getElementById('m-add-player').addEventListener('click', function () {
       var name = prompt('New player name?');
       if (!name) return;
       var p = { id: uid(), name: name.trim() || ('Player ' + (state.players.length + 1)), color: colorFor(state.players.length) };
       state.players.push(p);
       draftRound.tiles[p.id] = 0;
-      saveState();
+      persist();
       closeModal();
       renderGame();
     });
@@ -351,12 +523,8 @@
     });
     document.getElementById('m-new-game').addEventListener('click', function () {
       if (confirm('Start a new game? This clears the current scoreboard.')) {
-        state = { players: [], rounds: [], started: false };
-        draftRound = null;
-        draftPlayers = [{ id: uid(), name: '' }, { id: uid(), name: '' }];
-        saveState();
         closeModal();
-        render();
+        resetToSetup();
       }
     });
   }
@@ -384,7 +552,7 @@
         var p = state.players.find(function (x) { return x.id === pid; });
         if (p && input.value.trim()) p.name = input.value.trim();
       });
-      saveState();
+      persist();
       closeModal();
       renderGame();
     });
@@ -451,7 +619,7 @@
     document.getElementById('m-delete-round').addEventListener('click', function () {
       if (confirm('Delete round ' + (idx + 1) + '? This cannot be undone.')) {
         state.rounds.splice(idx, 1);
-        saveState();
+        persist();
         closeModal();
         renderStandings();
         renderHistory();
@@ -481,7 +649,7 @@
       round.stalemate = localStalemate;
       round.tiles = newTiles;
       round.scores = scores;
-      saveState();
+      persist();
       closeModal();
       renderStandings();
       renderHistory();
@@ -508,18 +676,31 @@
     );
     document.getElementById('m-keep-playing').addEventListener('click', closeModal);
     document.getElementById('m-newgame-from-end').addEventListener('click', function () {
-      state = { players: [], rounds: [], started: false };
-      draftRound = null;
-      draftPlayers = [{ id: uid(), name: '' }, { id: uid(), name: '' }];
-      saveState();
       closeModal();
-      render();
+      resetToSetup();
     });
   }
 
   /* ---------- init ---------- */
 
-  render();
+  function boot() {
+    initFirebase();
+    var urlGameId = getUrlGameId();
+    if (!urlGameId && firebaseReady) {
+      var lastGameId = localStorage.getItem(LAST_GAME_KEY);
+      if (lastGameId) {
+        urlGameId = lastGameId;
+        setUrlGameId(lastGameId);
+      }
+    }
+    if (urlGameId) {
+      joinRemoteGame(urlGameId);
+    } else {
+      render();
+    }
+  }
+
+  boot();
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {

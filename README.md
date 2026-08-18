@@ -1,6 +1,6 @@
 # Rummikub Score Tracker
 
-A tiny, installable web app for tracking Rummikub scores during an offline game with friends. No backend, no build step, no account — everything is stored locally on the phone that opens it.
+A tiny, installable web app for tracking Rummikub scores during a game with friends. No build step, no user accounts. Works fully offline on one phone, and optionally supports shared, live-syncing games at a unique URL if you connect a free Firebase project (a few minutes of setup, see below).
 
 ## Features
 
@@ -11,8 +11,8 @@ A tiny, installable web app for tracking Rummikub scores during an offline game 
 - Add a player mid-game or rename players
 - "No one went out" for blocked rounds
 - End-game summary with final standings
-- Progress is saved to the browser's local storage, so closing the tab/app or losing signal doesn't lose the game
 - Installable as a home-screen app (PWA) and works fully offline once loaded once
+- **Shared games**: once Firebase is connected, starting a game gives it a unique URL (`?g=<id>`) that anyone can open to see live score updates and enter rounds themselves — no login required. Share it from the in-game menu (🔗 Share Game Link). Without Firebase connected, the app still works great as a single-device, local-only tracker (saved to that browser's local storage).
 
 ## Running it
 
@@ -43,3 +43,37 @@ You can also double-click `index.html` to open it in any browser — it works wi
 ## Scoring model
 
 Standard Rummikub rules: whoever plays their last tile ("goes out") scores the sum of the tile values remaining in everyone else's rack; everyone else scores the negative of their own remaining tiles. If the pool runs out and no one can play (a blocked round), everyone just scores negative their own tiles with no bonus for anyone — use the "No one went out" checkbox for that case.
+
+## Enabling shared games (Firebase setup)
+
+By default `firebase-config.js` has placeholder values, which keeps the app in local-only mode. To turn on shared, unique-URL games:
+
+1. Go to the [Firebase console](https://console.firebase.google.com/), click **Add project**, give it any name (e.g. "rummikub-tracker"), and skip Google Analytics (not needed). Free tier ("Spark plan") is more than enough.
+2. In the new project, go to **Build → Firestore Database → Create database**. Choose **Start in production mode** and pick any region. Click Enable.
+3. Go to the **Rules** tab of Firestore and replace the contents with:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /games/{gameId} {
+         allow read, write: if true;
+       }
+     }
+   }
+   ```
+   Click **Publish**. This makes any game doc readable/writable by anyone who has (or guesses) its ID — fine for casual score-keeping among friends, since IDs are long random strings, but worth knowing: there's no login, so don't put anything sensitive in a game.
+4. Go to **Project settings** (gear icon, top left) → **General** tab → scroll to "Your apps" → click the web icon (`</>`) → register an app (any nickname, skip Firebase Hosting). Firebase will show you a `firebaseConfig` object.
+5. Open `firebase-config.js` in this repo and paste those exact values in, replacing the placeholders:
+   ```js
+   window.FIREBASE_CONFIG = {
+     apiKey: 'AIza...',
+     authDomain: 'your-project.firebaseapp.com',
+     projectId: 'your-project',
+     storageBucket: 'your-project.appspot.com',
+     messagingSenderId: '...',
+     appId: '...'
+   };
+   ```
+6. Commit and push (or edit the file directly on GitHub). Once deployed, starting a new game will automatically get a shareable link, and the in-game menu will show "🔗 Share Game Link".
+
+These config values are not secret — they identify your project, not a credential — so it's fine to commit them; access control is handled entirely by the Firestore rules above.

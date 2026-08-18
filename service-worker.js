@@ -1,9 +1,10 @@
-const CACHE_NAME = 'rummikub-tracker-v1';
+const CACHE_NAME = 'rummikub-tracker-v2';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './firebase-config.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
